@@ -283,15 +283,15 @@ obj \%>\% select(region:size)
 obj \%>\% filter(region == "West" & size == "medium")
 obj1 \%>\% filter(region == "West" & population > 10000)
 
-obj \%>\% mutate(p1 = population / 10)
-obj \%>\% mutate(s1 = size)
+## obj \%>\% mutate(p1 = population / 10)
+## obj \%>\% mutate(s1 = size)
 
 obj \%>\% select(region, size, population) \%>\% 
-    filter(population > 10000) \%>\% 
-    mutate(pK = population/1000)
+    filter(population > 10000) ## \%>\% 
+    ## mutate(pK = population/1000)
 obj1 \%>\% select(region, size, population) \%>\% 
-    filter(population > 10000) \%>\% 
-    mutate(pK = population/1000)  
+    filter(population > 10000) ## \%>\% 
+    ## mutate(pK = population/1000)  
 
 ###################
 ## connection info

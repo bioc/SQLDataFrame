@@ -319,7 +319,7 @@ data observations and adding new columns.
 obj1 %>% filter(division == "South Atlantic" & size == "medium")
 ```
 
-```{r}
+```{r, eval=FALSE}
 obj1 %>% mutate(p1 = population/10, s1 = size)
 ```
 

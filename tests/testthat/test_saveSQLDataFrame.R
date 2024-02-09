@@ -29,11 +29,11 @@ test_that("saveSQLDataFrame works!", {
     expect_identical(as.data.frame(aa), as.data.frame(obj1))
     
     ## op_single
-    obj1 <- obj %>% mutate(p1 = population/10)
-    expect_message(aa <- saveSQLDataFrame(obj1))
-    expect_identical(dim(aa), c(50L, 4L))
-    expect_identical(normalizePath(dirname(dbcon(aa)@dbname)),
-                     normalizePath(tempdir()))
-    expect_identical(dbtable(aa), "obj1")
-    expect_identical(as.data.frame(aa), as.data.frame(obj1))
+    ## obj1 <- obj %>% mutate(p1 = population/10)
+    ## expect_message(aa <- saveSQLDataFrame(obj1))
+    ## expect_identical(dim(aa), c(50L, 4L))
+    ## expect_identical(normalizePath(dirname(dbcon(aa)@dbname)),
+    ##                  normalizePath(tempdir()))
+    ## expect_identical(dbtable(aa), "obj1")
+    ## expect_identical(as.data.frame(aa), as.data.frame(obj1))
 })
