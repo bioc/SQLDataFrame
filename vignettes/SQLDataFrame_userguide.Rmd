@@ -1,0 +1,206 @@
+---
+title: Using SQL-backed DataFrames
+author:
+- name: Qian Liu
+  email: Qian.Liu@RoswellPark.org
+  affiliation: Roswell Park Comprehensive Cancer Center, Buffalo, NY
+- name: Aaron Lun
+  affiliation: Genentech, Inc.
+- name: Martin Morgan
+  affiliation: Roswell Park Comprehensive Cancer Center, Buffalo, NY
+package: SQLDataFrame
+date: "Revised: February 5, 2024"
+output:
+  BiocStyle::html_document
+vignette: >
+  %\VignetteIndexEntry{User guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+```{r, echo=FALSE}
+library(BiocStyle)
+self <- Biocpkg("SQLDataFrame");
+knitr::opts_chunk$set(error=FALSE, warning=FALSE, message=FALSE)
+```
+
+# Overview
+
+Firstly, I would like to extend my special thanks to Aaron Lun for his
+foundational work on the `ParquetDataFrame` package, and for his
+highly technical and detailed suggestions aimed at enhancing the
+current implementation of the [`SQLDataFrame`
+package](https://github.com/Bioconductor/SQLDataFrame/issues/8). Here
+I'm introducing the new version of `SQLDataFrame` for handling
+different SQL-backed files. Essentially, the implementation of
+`SQLDataFrame` is modeled upon `ParquetDataFrame` regarding its data
+structure, construction, documentation, and examples. This approach
+ensures the retension of best practices and maintains consistentcy in
+the use within Bioconductor ecosystem, thus simplifying the learning
+curve for users.
+
+The `SQLDataFrame`, as its name suggests, is a `DataFrame` where the
+columns are derived from data in a SQL table. This is fully
+file-backed so no data is actually loaded into memory until requested,
+allowing users to represent large datasets in limited memory. As the
+`SQLDataFrame` inherits from `r Biocpkg("S4Vectors")`' `DataFrame`, it
+can be used anywhere in Bioconductor's ecosystem that accepts a
+`DataFrame`, e.g., as the column data of a `SummarizedExperiment`, or
+inside a `BumpyDataFrameMatrix` from the `r Biocpkg("BumpyMatrix")`
+package.
+
+`SQLDataFrame` currently supports the following backends with their
+respective extension classes (and constructor functions):
+
+- `SQLite`: `SQLiteDataFrame`
+- `DuckDB`: `DuckDBDataFrame`
+
+It can be easily extended to any other SQL-backed file types by simply
+defining the extension classs in `SQL_extensions.R` with minor updates
+in `acquireConn.R` to create a database instance. Pull requests for
+adding new SQL backends are welcome!
+
+# Package installation
+
+1. Download the package from Bioconductor.
+
+```{r getPackage, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("SQLDataFrame")
+```
+
+2. Load the package into R session.
+```{r Load, message=FALSE}
+library(SQLDataFrame)
+```
+
+# Basic usage
+
+Given a path, database type and table name to a SQL file, we can
+construct a `SQLDataFrame`. If the backend is supported, we can
+construct an extension class directly.
+
+```{r}
+## Mocking up a file.
+tf <- tempfile()
+con <- DBI::dbConnect(RSQLite::SQLite(), tf)
+DBI::dbWriteTable(con, "mtcars", mtcars)
+DBI::dbDisconnect(con)
+
+
+## Creating the SQLiteDataFrame.
+library(SQLDataFrame)
+df <- SQLDataFrame(tf, dbtype = "sqlite", table = "mtcars")
+df0 <- SQLiteDataFrame(tf, table = "mtcars")
+identical(df, df0)
+```
+
+Similarly, we can create a `DuckDbDataFrame`: 
+
+```{r}
+tf1 <- tempfile()
+on.exit(unlist(tf1))
+con <- DBI::dbConnect(duckdb::duckdb(), tf1)
+DBI::dbWriteTable(con, "mtcars", mtcars)
+DBI::dbDisconnect(con)
+
+df1 <- SQLDataFrame(tf1, dbtype = "duckdb", table = "mtcars")
+df2 <- DuckDBDataFrame(tf1, table = "mtcars")
+identical(df1, df2)
+```
+
+These support all the usual methods for a `DataFrame`, except that the
+data is kept on file and referenced as needed:
+
+```{r}
+nrow(df)
+colnames(df)
+class(as.data.frame(df))
+```
+
+We extract individual columns as `SQLColumnVector` objects. These
+are 1-dimensional file-backed `DelayedArray`s that pull a single
+column's data from the SQL table on demand.
+
+```{r}
+df$mpg
+
+# These can participate in usual vector operations:
+df$mpg * 10
+log1p(df$mpg)
+
+# Realize this into an ordinary vector.
+as.vector(df$mpg)
+```
+
+# Collapsing to a `DFrame`
+
+The main goal of a `SQLDataFrame` is to serve as a consistent
+representation of the data inside a SQL table. However, this cannot be
+easily reconciled with many `DataFrame` operations that add or change
+data - at least, not without mutating the SQL file, which is outside
+the scope of the `SQLDataFrame` class. To handle such operations,
+the `SQLDataFrame` will collapse to a `DFrame` of
+`SQLColumnVector`s:
+
+```{r}
+copy <- df
+copy$some_random_thing <- runif(nrow(df))
+class(copy)
+colnames(copy)
+```
+
+This preserves the memory efficiency of file-backed data while
+supporting all `DataFrame` operations. For example, we can easily
+subset and mutate the various columns, which manifest as delayed
+operations inside each column.
+
+```{r}
+copy$wt <- copy$wt * 1000
+top.hits <- head(copy)
+top.hits
+```
+
+The fallback to `DFrame` ensures that a `SQLDataFrame` is
+interoperable with other Bioconductor data structures that need to
+perform arbitrary `DataFrame` operations. Of course, when a collapse
+occurs, we lose all guarantees that the in-memory representation is
+compatible with the underlying SQL table. This may preclude further
+optimizations in cases where we consider directly operating on the
+file.
+
+# Retrieving the SQL connection
+
+At any point, users can retrieve a handle of connection to the
+underlying SQL file via the `acquireConn()` function. This can be used
+with methods in the `r CRANpkg("DBI")`, `r CRANpkg("RSQLite")`, and `r CRANpkg("duckdb")`
+packages. The cached `DBIConnection` for any given `path` can be
+deleted by calling `releaseConn`.
+
+
+```{r}
+handle <- acquireConn(path(df), dbtype = dbtype(df))
+handle
+releaseConn(path(df))
+```
+
+Note that the acquired handle will not capture any delayed
+subsetting/mutation operations that have been applied in the R
+session. In theory, it is possible to convert a subset of `r
+Biocpkg("DelayedArray")` operations into their `r CRANpkg("DBI")`
+equivalents, which would improve performance by avoiding the R
+interpreter when executing a query on the file.
+
+In practice, any performance boost tends to be rather fragile as only
+a subset of operations are supported, meaning that it is easy to
+silently fall back to R-based evaluation when an unsupported operation
+is executed. Users wanting to optimize query performance should just
+operate on the handle directly.
+
+# Session information {-}
+
+```{r}
+sessionInfo()
+```
