@@ -1,7 +1,7 @@
 CHANGES IN VERSION 1.17.1 (2023-3-28)
 --------------------------------------
 
-There is a total overhaul of the package implementation. It now
++ There is a total overhaul of the package implementation. It now
 defines a 1-dimension DelayedArray called SQLColumnVector to be the
 basic element which can sit inside a normal DataFrame for delayed
 operation on-disk. It also defines SQLDataFrame to represent a SQL
@@ -11,7 +11,7 @@ represent large datasets in limited memory. SQLDataFrame inherites
 from DataFrame so it can be used anywhere in Bioconductor's ecosystem
 that accepts DataFrame, such as SummarizedExperiment.
 
-SQLDataFrame is primarily useful for indicating that the in-memory
++ SQLDataFrame is primarily useful for indicating that the in-memory
 representation is consistent with the underlying SQL file. It supports
 all the usual methods for a `DataFrame`, except that the data is kept
 on file and referenced as needed. However, only some operations can
